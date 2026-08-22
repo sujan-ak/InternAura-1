@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/"
+title = "InternAura"
+description = "A personalized internship recommendation app for college students, helping them build a profile, discover ranked opportunities, understand skill gaps, save internships, and track their application journey."
+version = "1.0.0"
+id = "artifacts/internaura"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/" ]
+localPort = 24088
+
+[services.development]
+run = "pnpm --filter @workspace/internaura run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/internaura", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/internaura", "run", "serve" ]
+
+[services.env]
+PORT = "24088"
+BASE_PATH = "/"

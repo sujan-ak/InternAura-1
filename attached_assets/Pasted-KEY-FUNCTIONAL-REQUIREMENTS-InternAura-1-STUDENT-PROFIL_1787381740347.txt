@@ -1,0 +1,68 @@
+KEY FUNCTIONAL REQUIREMENTS — InternAura
+
+1. STUDENT PROFILE
+- Onboarding form captures: name, degree, year, skills (multi-select tags), interests, 
+  preferred domain, preferred location, work mode (remote/on-site/hybrid), internship 
+  duration, preferred stipend, career goal.
+- On submit, upsert into `students` table keyed by auth user id.
+- Profile must be editable later from the Profile tab (same form, pre-filled).
+
+2. INTERNSHIP LISTINGS
+- Read-only list/grid of internships from the `internships` table.
+- Each card shows: title, company, domain, location, work mode, stipend, duration.
+- Seed ~20-30 realistic sample internships across multiple domains (AI/ML, Full Stack, 
+  Data Science, Marketing, Design) so the app is demoable standalone.
+
+3. HYBRID RECOMMENDATION DISPLAY
+- Dashboard fetches from `recommendations` table (joined with `internships`), ordered by 
+  `score` descending, filtered to the logged-in student.
+- Display `score` as a prominent match % badge (e.g. color-coded: green 80%+, yellow 
+  50-79%, gray below 50%).
+- The app does NOT calculate this score — it is precomputed by a backend service and 
+  only rendered here.
+
+4. EXPLANATION — "WHY THIS INTERNSHIP?"
+- On the internship detail screen, render the `reasons` JSON field (array of strings) 
+  as a checklist with checkmarks, e.g.:
+  ✓ Python matches your skills
+  ✓ Machine Learning matches your career goal
+  ✓ Remote work matches your preference
+  ✓ Previous saves were AI-focused
+  ✓ Education requirement satisfied
+- If `reasons` is empty/null, show a fallback message instead of a blank section.
+
+5. SKILL GAP ANALYSIS
+- On the internship detail screen, render `skill_gap` JSON as three categorized lists:
+  Strong (green, checkmark), Partial (yellow, half-circle), Missing (red/gray, empty circle).
+- Below the skill breakdown, show a short "Recommended preparation" list (2-3 bullet 
+  items) if provided in the skill_gap payload.
+
+6. BEHAVIOUR-BASED FEEDBACK LOOP
+- Auto-log a 'view' interaction the moment a student opens an internship detail screen 
+  (fire once per screen visit, insert into `interactions` with action='view').
+- Save button -> insert interaction action='save'.
+- Apply button -> insert interaction action='apply', then show a confirmation state 
+  (button becomes disabled/labeled "Applied").
+- On the dashboard, each card has a small Skip (X) action -> insert interaction 
+  action='skip' AND open a reason picker modal with options: 
+  "Not interested", "Skills don't match", "Location", "Already applied".
+  Store the selected reason in a `reason` text column on the `interactions` table 
+  (add this column: alter table interactions add column reason text;).
+- Like button (thumbs up on detail screen or post-interaction prompt) -> insert 
+  interaction action='like'. Thumbs down -> action='skip' with reason "Not interested".
+- After any save/skip/apply, re-fetch the dashboard so ranking order visibly updates 
+  in the same session (optimistic or refetch-on-mutation via React Query).
+
+7. ANALYTICS DASHBOARD
+- Show as stat cards: overall profile match % (average of top recommendations), 
+  strongest skills (skills appearing most often in 'Strong' category across 
+  recommendations), skills to improve (skills appearing most often in 'Missing' 
+  category), and counts of total applications, total saves, total recommendations.
+- Pull all data live from `interactions` and `recommendations` — no hardcoded numbers.
+
+8. STATE HANDLING
+- Every data-fetching screen (Dashboard, Detail, Saved, Analytics) needs distinct 
+  loading, empty, and error states — not just a spinner or blank screen.
+
+SCHEMA ADDITION NEEDED
+alter table interactions add column reason text;
