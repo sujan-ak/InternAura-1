@@ -32,7 +32,7 @@ import { canonicalizeSkills } from "@workspace/db/skill-normalizer";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireAuthUserOnly } from "../middlewares/auth";
-import { asyncHandler } from "../middlewares/error-handler";
+import { asyncHandler, HttpError } from "../middlewares/error-handler";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -98,14 +98,19 @@ router.post(
     // patches/sql/001_fix_schema.sql. Without it the old code did
     // select-then-branch, which raced under concurrent onboarding submits and
     // could create two profiles for one account.
-    const [saved] = await db
-      .insert(studentsTable)
-      .values(values)
-      .onConflictDoUpdate({ target: studentsTable.authUser, set: values })
-      .returning();
+    try {
+      const [saved] = await db
+        .insert(studentsTable)
+        .values(values)
+        .onConflictDoUpdate({ target: studentsTable.authUser, set: values })
+        .returning();
 
-    logger.info({ studentId: saved.id }, "Student profile saved");
-    res.json(saved);
+      logger.info({ studentId: saved.id, authUserId }, "Student profile saved");
+      res.json(saved);
+    } catch (err: any) {
+      logger.error({ err, authUserId }, "Failed to save student profile to database");
+      throw new HttpError(500, "Couldn't save your profile — please try again");
+    }
   }),
 );
 

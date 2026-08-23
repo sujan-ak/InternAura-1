@@ -54,8 +54,9 @@ WITH ranked AS (
 )
 DELETE FROM students s USING ranked r WHERE s.id = r.id AND r.rn > 1;
 
+DROP INDEX IF EXISTS students_auth_user_id_uniq;
 CREATE UNIQUE INDEX IF NOT EXISTS students_auth_user_id_uniq
-  ON students (auth_user_id) WHERE auth_user_id IS NOT NULL;
+  ON students (auth_user_id);
 
 -- One assessment row per (student, skill). Retakes previously APPENDED, and
 -- /recommendations averaged every attempt scoring >= 60 — so grinding retakes
@@ -66,10 +67,16 @@ WHERE a.student_id = b.student_id
   AND a.skill = b.skill
   AND a.student_id IS NOT NULL
   AND (a.weighted_score < b.weighted_score
-       OR (a.weighted_score = b.weighted_score AND a.id > b.id));
+-- Ensure legacy table columns from older seeds are nullable
+ALTER TABLE assessments ALTER COLUMN difficulty_level DROP NOT NULL;
+ALTER TABLE assessments ALTER COLUMN blueprint DROP NOT NULL;
+ALTER TABLE assessments ALTER COLUMN pass_percentage DROP NOT NULL;
+ALTER TABLE assessments ALTER COLUMN created_at DROP NOT NULL;
+ALTER TABLE assessments ALTER COLUMN updated_at DROP NOT NULL;
 
+DROP INDEX IF EXISTS assessments_student_skill_uniq;
 CREATE UNIQUE INDEX IF NOT EXISTS assessments_student_skill_uniq
-  ON assessments (student_id, skill) WHERE student_id IS NOT NULL AND skill IS NOT NULL;
+  ON assessments (student_id, skill);
 
 -- One interaction row per (student, internship, action) — makes save/apply
 -- idempotent so tap-spam can no longer inflate counts or the behaviour band.

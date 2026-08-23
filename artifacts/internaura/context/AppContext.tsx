@@ -199,14 +199,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const enabled = authReady && Boolean(authUserId);
 
   const studentQuery = useQuery({
-    queryKey: ["students-me", authUserId],
+    queryKey: ["/api/students/me", authUserId],
     queryFn: () => getJson<any>("/api/students/me"),
     enabled,
     staleTime: 60_000,
   });
 
   const recommendationsQuery = useQuery({
-    queryKey: ["recommendations", authUserId],
+    queryKey: ["/api/recommendations", authUserId],
     queryFn: () => getJson<any[]>("/api/recommendations"),
     // No student_id param — the server reads the JWT.
     enabled: enabled && Boolean(studentQuery.data?.id),
@@ -214,14 +214,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   });
 
   const internshipsQuery = useQuery({
-    queryKey: ["internships"],
+    queryKey: ["/api/internships"],
     queryFn: () => getJson<any[]>("/api/internships"),
     enabled,
     staleTime: 5 * 60_000,
   });
 
   const interactionsQuery = useQuery({
-    queryKey: ["interactions", authUserId],
+    queryKey: ["/api/interactions", authUserId],
     queryFn: () => getJson<any[]>("/api/interactions"),
     enabled: enabled && Boolean(studentQuery.data?.id),
     staleTime: 15_000,
@@ -248,9 +248,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // --- Mutations ---
   const invalidateInteractions = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["interactions", authUserId] });
-    queryClient.invalidateQueries({ queryKey: ["recommendations", authUserId] });
-  }, [queryClient, authUserId]);
+    queryClient.invalidateQueries({ queryKey: ["/api/interactions"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/recommendations"] });
+  }, [queryClient]);
 
   const addInteraction = useMutation({
     mutationFn: async (v: { internshipId: string; action: string; reason?: string }) => {
@@ -287,7 +287,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   /** Optimistically patch the interactions cache so the UI responds instantly. */
   const patchCache = useCallback(
     (fn: (rows: any[]) => any[]) => {
-      queryClient.setQueryData(["interactions", authUserId], (old: any) =>
+      queryClient.setQueryData(["/api/interactions", authUserId], (old: any) =>
         fn(Array.isArray(old) ? old : []),
       );
     },

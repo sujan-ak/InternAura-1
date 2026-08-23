@@ -50,9 +50,12 @@ export function errorHandler(
 
   logger.error({ err, path: req.path }, "Unhandled error");
 
-  // Never leak internals in production. Express 5's default handler does.
+  const rawMsg = String((err as Error)?.message ?? err);
+  const isDbOrQueryError = /failed query|syntax error|relation|constraint|column|pg_/i.test(rawMsg);
+  const sanitizedMsg = isDbOrQueryError ? "An internal database error occurred. Please try again." : rawMsg;
+
   const isProd = process.env.NODE_ENV === "production";
   res.status(500).json({
-    error: isProd ? "Internal server error" : String((err as Error)?.message ?? err),
+    error: isProd ? "Internal server error" : sanitizedMsg,
   });
 }

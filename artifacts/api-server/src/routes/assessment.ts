@@ -63,6 +63,7 @@ import { asyncHandler, HttpError } from "../middlewares/error-handler";
 import {
   createSession,
   claimSession,
+  saveSessionResult,
   toPublicQuestions,
   type StoredQuestion,
 } from "../lib/assessment-store";
@@ -513,7 +514,7 @@ router.post(
     const student = req.student!;
 
     const { questions, source, fallbackReason } = await generateQuestions(skill, level);
-    const session = createSession({ studentId: student.id, skill, level, questions });
+    const session = await createSession({ studentId: student.id, skill, level, questions });
 
     logger.info({ sessionId: session.id, skill, source }, "Assessment session created");
 
@@ -553,13 +554,19 @@ router.post(
     const student = req.student!;
 
     const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
-    const claim = claimSession(sessionId, student.id);
+    const claim = await claimSession(sessionId, student.id);
     if (!claim.ok) {
       const status = claim.reason === "forbidden" ? 403 : claim.reason === "already_submitted" ? 409 : 404;
       throw new HttpError(status, `Assessment session ${claim.reason.replace(/_/g, " ")}`);
     }
 
     const { session } = claim;
+    if (claim.isAlreadyGraded && session.result) {
+      logger.info({ studentId: student.id, sessionId }, "Returning cached assessment result");
+      res.json(session.result);
+      return;
+    }
+
     const skill = session.skill;
 
     const stats: Record<string, { score: number; max: number; weight: number }> = {
@@ -652,33 +659,35 @@ router.post(
         weight: d.weight,
       }));
 
-    // FIX #19: UPSERT keeping the best score, instead of appending a row per
-    // attempt. Requires: CREATE UNIQUE INDEX assessments_student_skill_uniq
-    //                    ON assessments (student_id, skill);
-    await db
-      .insert(assessmentsTable)
-      .values({
-        studentId: student.id,
-        authUser: student.authUserId,
-        skill,
-        title: skill,
-        skillName: skill,
-        weightedScore: String(weightedScore),
-        proficiencyTier: tier,
-      })
-      .onConflictDoUpdate({
-        target: [assessmentsTable.studentId, assessmentsTable.skill],
-        set: {
-          weightedScore: sql`GREATEST(${assessmentsTable.weightedScore}, ${String(weightedScore)}::numeric)`,
-          proficiencyTier: sql`CASE WHEN ${assessmentsTable.weightedScore} >= ${String(weightedScore)}::numeric
-                                    THEN ${assessmentsTable.proficiencyTier} ELSE ${tier} END`,
-          completedAt: new Date(),
-        },
-      });
+    try {
+      await db
+        .insert(assessmentsTable)
+        .values({
+          studentId: student.id,
+          authUser: student.authUserId,
+          skill,
+          title: skill,
+          skillName: skill,
+          weightedScore: String(weightedScore),
+          proficiencyTier: tier,
+        })
+        .onConflictDoUpdate({
+          target: [assessmentsTable.studentId, assessmentsTable.skill],
+          set: {
+            weightedScore: sql`GREATEST(${assessmentsTable.weightedScore}, ${String(weightedScore)}::numeric)`,
+            proficiencyTier: sql`CASE WHEN ${assessmentsTable.weightedScore} >= ${String(weightedScore)}::numeric
+                                      THEN ${assessmentsTable.proficiencyTier} ELSE ${tier} END`,
+            completedAt: new Date(),
+          },
+        });
+    } catch (dbErr: any) {
+      logger.error({ err: dbErr, studentId: student.id, skill }, "Failed to save assessment to database");
+      throw new HttpError(500, "Couldn't save your results — please try again");
+    }
 
     logger.info({ studentId: student.id, skill, weightedScore, tier }, "Assessment graded");
 
-    res.json({
+    const responsePayload = {
       skill,
       total_score: earned,
       max_score: maxPoints,
@@ -700,7 +709,10 @@ router.post(
         `Achieved '${tier}' in ${skill} with a weighted score of ${weightedScore}%.`,
         "Weights: MCQ 20%, Conceptual 20%, Debugging 20%, Practical 40%.",
       ],
-    });
+    };
+
+    await saveSessionResult(session.id, responsePayload);
+    res.json(responsePayload);
   }),
 );
 

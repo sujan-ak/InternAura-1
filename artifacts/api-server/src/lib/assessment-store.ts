@@ -1,28 +1,11 @@
 /**
- * Server-side assessment session store — fixes gap #2.
+ * Server-side assessment session store — fixes gap #2 and provides PostgreSQL persistence.
  * PLACE AT: artifacts/api-server/src/lib/assessment-store.ts
- *
- * THE BUG THIS FIXES
- * ------------------
- * /assessment/generate returned `correct_answer` + `explanation` for all 10
- * questions, and /assessment/evaluate graded against the `questions` array the
- * CLIENT posted back. So:
- *   1. The answer key was on the device before the student answered anything.
- *   2. Anyone could POST a forged 100% for any student_id with one curl.
- *
- * Now the answer key never leaves the server. /generate stores it under a
- * sessionId; /evaluate looks it up and grades against the stored copy. The
- * client only ever posts { sessionId, answers }.
- *
- * PRODUCTION NOTE
- * ---------------
- * In-process Map = correct for one instance, WRONG for .replit's
- * `deploymentTarget = "autoscale"` (instance B won't have instance A's session).
- * Swap these four functions for Redis or an `assessment_sessions` table before
- * scaling out. The interface is deliberately tiny so that's a ~20 line change.
  */
 
 import { randomUUID } from "crypto";
+import { pool } from "@workspace/db";
+import { logger } from "./logger";
 
 export interface StoredQuestion {
   id: string;
@@ -47,9 +30,10 @@ export interface AssessmentSession {
   questions: StoredQuestion[];
   createdAt: number;
   submittedAt: number | null;
+  result?: any;
 }
 
-const SESSION_TTL_MS = 45 * 60 * 1000;
+const SESSION_TTL_MS = 3 * 60 * 60 * 1000; // 3 hours
 const sessions = new Map<string, AssessmentSession>();
 
 function sweep(): void {
@@ -57,12 +41,12 @@ function sweep(): void {
   for (const [id, s] of sessions) if (s.createdAt < cutoff) sessions.delete(id);
 }
 
-export function createSession(input: {
+export async function createSession(input: {
   studentId: string;
   skill: string;
   level: string;
   questions: StoredQuestion[];
-}): AssessmentSession {
+}): Promise<AssessmentSession> {
   sweep();
   const session: AssessmentSession = {
     id: randomUUID(),
@@ -74,21 +58,63 @@ export function createSession(input: {
     submittedAt: null,
   };
   sessions.set(session.id, session);
+
+  // Persist to PostgreSQL so sessions survive server reloads & worker processes
+  if (pool) {
+    pool.query(
+      `INSERT INTO assessment_sessions (id, student_id, skill, level, questions, created_at, submitted_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NULL)
+       ON CONFLICT (id) DO NOTHING`,
+      [session.id, session.studentId, session.skill, session.level, JSON.stringify(session.questions), session.createdAt]
+    ).catch((err: any) => {
+      logger.warn({ err, sessionId: session.id }, "Failed to asynchronously persist assessment session to DB");
+    });
+  }
+
   return session;
 }
 
 /**
  * Look up a session, enforcing ownership and single-submission.
- * Returns a discriminated result so the route maps each failure to the right
- * status code instead of a generic 500.
+ * Recovers session from PostgreSQL if the server restarted mid-assessment.
  */
-export function claimSession(
+export async function claimSession(
   sessionId: string,
   studentId: string,
-):
-  | { ok: true; session: AssessmentSession }
-  | { ok: false; reason: "not_found" | "expired" | "forbidden" | "already_submitted" } {
-  const session = sessions.get(sessionId);
+): Promise<
+  | { ok: true; session: AssessmentSession; isAlreadyGraded?: boolean }
+  | { ok: false; reason: "not_found" | "expired" | "forbidden" | "already_submitted" }
+> {
+  let session = sessions.get(sessionId);
+
+  // If not in in-memory Map (e.g. server restarted during quiz), query DB
+  if (!session && pool) {
+    try {
+      const res = await pool.query(
+        `SELECT id, student_id, skill, level, questions, created_at, submitted_at, result
+         FROM assessment_sessions
+         WHERE id = $1`,
+        [sessionId]
+      );
+      if (res.rows.length > 0) {
+        const row = res.rows[0];
+        session = {
+          id: row.id,
+          studentId: row.student_id,
+          skill: row.skill,
+          level: row.level,
+          questions: typeof row.questions === "string" ? JSON.parse(row.questions) : row.questions,
+          createdAt: Number(row.created_at),
+          submittedAt: row.submitted_at ? Number(row.submitted_at) : null,
+          result: row.result ? (typeof row.result === "string" ? JSON.parse(row.result) : row.result) : undefined,
+        };
+        sessions.set(session.id, session);
+      }
+    } catch (dbErr) {
+      logger.warn({ err: dbErr, sessionId }, "DB query for assessment session failed");
+    }
+  }
+
   if (!session) return { ok: false, reason: "not_found" };
   if (Date.now() - session.createdAt > SESSION_TTL_MS) {
     sessions.delete(sessionId);
@@ -96,10 +122,36 @@ export function claimSession(
   }
   // Identity comes from the verified JWT, never from the body.
   if (session.studentId !== studentId) return { ok: false, reason: "forbidden" };
-  if (session.submittedAt !== null) return { ok: false, reason: "already_submitted" };
+
+  // If already graded and result is cached, allow idempotent retrieval of the result
+  if (session.result) {
+    return { ok: true, session, isAlreadyGraded: true };
+  }
+
+  if (session.submittedAt !== null) {
+    return { ok: false, reason: "already_submitted" };
+  }
 
   session.submittedAt = Date.now();
+  if (pool) {
+    pool.query(`UPDATE assessment_sessions SET submitted_at = $1 WHERE id = $2`, [session.submittedAt, session.id]).catch(() => {});
+  }
   return { ok: true, session };
+}
+
+export async function saveSessionResult(sessionId: string, result: any): Promise<void> {
+  const session = sessions.get(sessionId);
+  const now = Date.now();
+  if (session) {
+    session.result = result;
+    session.submittedAt = session.submittedAt ?? now;
+  }
+  if (pool) {
+    pool.query(
+      `UPDATE assessment_sessions SET result = $1, submitted_at = COALESCE(submitted_at, $2) WHERE id = $3`,
+      [JSON.stringify(result), now, sessionId]
+    ).catch(() => {});
+  }
 }
 
 /** Strip the answer key before anything reaches a client. */

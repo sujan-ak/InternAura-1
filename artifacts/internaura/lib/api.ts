@@ -83,6 +83,9 @@ export async function authedFetch(path: string, init: RequestInit = {}): Promise
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
+  if (init.body && typeof init.body === "string" && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
 
   return fetch(apiUrl(path), { ...init, headers });
 }

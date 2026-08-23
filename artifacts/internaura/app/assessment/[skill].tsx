@@ -75,6 +75,7 @@ export default function SkillAssessmentScreen() {
   const [loadingText, setLoadingText] = useState("Preparing assessment questions...");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<EvaluationResult | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Handle back navigation confirmation if in active quiz
   const handleBack = () => {
@@ -146,7 +147,9 @@ export default function SkillAssessmentScreen() {
       setStep("intro");
       return;
     }
+    if (isSubmitting) return;
 
+    setIsSubmitting(true);
     setStep("evaluating");
     setError(null);
     setLoadingText("Evaluating technical answers...");
@@ -154,6 +157,7 @@ export default function SkillAssessmentScreen() {
     try {
       const res = await authedFetch(`/api/assessment/sessions/${sessionId}/submit`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ answers }),
       });
 
@@ -174,6 +178,8 @@ export default function SkillAssessmentScreen() {
       console.warn("[Assessment Submit Catch]", err?.name, err?.message);
       setError(err.message || "Failed to evaluate answers. Please try again.");
       setStep("questions");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -360,7 +366,28 @@ export default function SkillAssessmentScreen() {
         {error && (
           <View style={s.errorBox}>
             <Feather name="alert-circle" size={16} color={c.destructive} />
-            <Text style={s.errorT}>{error}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={s.errorT}>{error}</Text>
+              {(error.toLowerCase().includes("already submitted") ||
+                error.toLowerCase().includes("expired") ||
+                error.toLowerCase().includes("not found")) && (
+                <Pressable
+                  onPress={handleStart}
+                  style={{
+                    marginTop: 8,
+                    alignSelf: "flex-start",
+                    backgroundColor: c.primary,
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 6,
+                  }}
+                >
+                  <Text style={{ color: "#FFF", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>
+                    Start Fresh Assessment
+                  </Text>
+                </Pressable>
+              )}
+            </View>
           </View>
         )}
 
@@ -378,7 +405,12 @@ export default function SkillAssessmentScreen() {
 
           {isLastQ ? (
             <Pressable
-              style={[s.primaryBtn, { flex: 1, marginLeft: currentIndex > 0 ? 10 : 0 }]}
+              style={[
+                s.primaryBtn,
+                { flex: 1, marginLeft: currentIndex > 0 ? 10 : 0 },
+                isSubmitting && { opacity: 0.6 },
+              ]}
+              disabled={isSubmitting}
               onPress={handleSubmit}
             >
               <Text style={s.primaryBtnT}>Submit Assessment</Text>

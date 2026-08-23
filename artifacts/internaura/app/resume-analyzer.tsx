@@ -177,6 +177,7 @@ export default function ResumeAnalyzerScreen() {
 
       const res = await authedFetch("/api/students/me/skills", {
         method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ skills: newSkillsList, mode: "merge" }),
       });
 
@@ -205,14 +206,20 @@ export default function ResumeAnalyzerScreen() {
     setAdzunaLoading(true);
 
     try {
-      // Adzuna search uses ONLY the assessed skills (up to 3 chosen+verified skills)
-      // so the query is tight and relevant, not a 50+ skill dump.
-      // The full skill list remains stored on the student profile for ATS/Discover.
-      const skillsQuery = assessedSkillNames.join(",");
+      // Adzuna search uses assessed skills with safe fallback to profile skills
+      const validSkills = (assessedSkillNames || []).filter(Boolean);
+      const fallbackSkills = skills.map((s) => s.name).filter(Boolean);
+      const profileSkills = Array.isArray(profile?.skills) ? (profile.skills as string[]) : [];
+      const finalSkills =
+        validSkills.length > 0 ? validSkills : fallbackSkills.length > 0 ? fallbackSkills : profileSkills;
+
+      const skillsQuery = finalSkills.length > 0 ? finalSkills.join(",") : "Software Developer";
       const locQuery = profile?.location || "India";
 
-      console.log(`[Adzuna] Searching with assessed skills only: ${skillsQuery}`);
-      const res = await authedFetch(`/api/internships/search-adzuna?skills=${encodeURIComponent(skillsQuery)}&location=${encodeURIComponent(locQuery)}`);
+      console.log(`[Adzuna] Searching with skills: ${skillsQuery} (location: ${locQuery})`);
+      const res = await authedFetch(
+        `/api/internships/search-adzuna?skills=${encodeURIComponent(skillsQuery)}&location=${encodeURIComponent(locQuery)}`
+      );
       if (res.ok) {
         const payload = await res.json();
         setAdzunaResults(payload.recommendations || []);
@@ -449,25 +456,43 @@ export default function ResumeAnalyzerScreen() {
           const allCategories = Object.keys(categoryGroups);
           const mandatoryCategories = allCategories.slice(0, 3);
 
-          // For each mandatory category, check if a chosen skill has been verified
+          // For each mandatory category, check if a chosen or category skill has been verified
           const totalRequired = mandatoryCategories.length;
           const completedCount = mandatoryCategories.filter((cat) => {
             const chosen = chosenSkills[cat];
-            if (!chosen) return false;
-            return userAssessments.some(
-              (a: any) =>
-                a.skill?.toLowerCase() === chosen.toLowerCase() &&
-                Number(a.weightedScore) >= 60
-            );
+            const catSkills = categoryGroups[cat] || [];
+            return userAssessments.some((a: any) => {
+              const score = Number(a.weightedScore ?? a.weighted_score ?? a.score ?? 0);
+              if (score < 60) return false;
+              if (chosen && a.skill?.toLowerCase() === chosen.toLowerCase()) return true;
+              return catSkills.some((sk) => sk.name.toLowerCase() === a.skill?.toLowerCase());
+            });
           }).length;
           const allDone = totalRequired > 0 && completedCount >= totalRequired;
 
-          // Collect the assessed skill names (for Adzuna query) — only verified ones
+          // Collect the assessed skill names (for Adzuna query) — verified ones
           const assessedSkillNames = mandatoryCategories
-            .map((cat) => chosenSkills[cat])
-            .filter((sk): sk is string => !!sk && userAssessments.some(
-              (a: any) => a.skill?.toLowerCase() === sk.toLowerCase() && Number(a.weightedScore) >= 60
-            ));
+            .map((cat) => {
+              const chosen = chosenSkills[cat];
+              const catSkills = categoryGroups[cat] || [];
+              if (chosen) {
+                const found = userAssessments.find(
+                  (a: any) =>
+                    a.skill?.toLowerCase() === chosen.toLowerCase() &&
+                    Number(a.weightedScore ?? a.weighted_score ?? a.score ?? 0) >= 60
+                );
+                if (found) return chosen;
+              }
+              const verifiedInCat = catSkills.find((sk) =>
+                userAssessments.some(
+                  (a: any) =>
+                    a.skill?.toLowerCase() === sk.name.toLowerCase() &&
+                    Number(a.weightedScore ?? a.weighted_score ?? a.score ?? 0) >= 60
+                )
+              );
+              return verifiedInCat?.name;
+            })
+            .filter((sk): sk is string => !!sk);
 
           return (
             <View style={{ gap: 20 }}>
@@ -506,15 +531,22 @@ export default function ResumeAnalyzerScreen() {
 
                 <View style={{ gap: 14, marginTop: 14 }}>
                   {mandatoryCategories.map((cat) => {
-                    const catSkills = categoryGroups[cat];
-                    const chosenSkill = chosenSkills[cat];
+                    const catSkills = categoryGroups[cat] || [];
+                    const autoVerifiedSkill = catSkills.find((sk) =>
+                      userAssessments.some(
+                        (a: any) =>
+                          a.skill?.toLowerCase() === sk.name.toLowerCase() &&
+                          Number(a.weightedScore ?? a.weighted_score ?? a.score ?? 0) >= 60
+                      )
+                    );
+                    const chosenSkill = chosenSkills[cat] || autoVerifiedSkill?.name;
                     const isPickerOpen = pickerCategory === cat;
 
                     const verifiedRecord = chosenSkill
                       ? userAssessments.find(
                           (a: any) =>
                             a.skill?.toLowerCase() === chosenSkill.toLowerCase() &&
-                            Number(a.weightedScore) >= 60
+                            Number(a.weightedScore ?? a.weighted_score ?? a.score ?? 0) >= 60
                         )
                       : null;
                     const isVerified = !!verifiedRecord;

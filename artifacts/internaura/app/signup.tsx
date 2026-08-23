@@ -63,6 +63,17 @@ export default function SignupScreen() {
       }
 
       if (data?.user) {
+        if (!data.session) {
+          // Explicitly sign in to acquire an active session token if signUp did not auto-session
+          const { error: signInErr } = await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password: password,
+          });
+          if (signInErr) {
+            console.warn("[SignUp] Auto-login after sign-up:", signInErr.message);
+          }
+        }
+
         // Store auth user ID in AsyncStorage for onboarding linkage
         await AsyncStorage.setItem("auth_user_id", data.user.id);
         await AsyncStorage.removeItem("hasOnboarded");
