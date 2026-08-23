@@ -1,0 +1,99 @@
+Build a mobile app called "InternAura" using Expo SDK 54 + Expo Router 6 (file-based routing), React 19, React Native 0.81, and TypeScript. This is a personalized internship recommendation app for college students.
+
+STACK REQUIREMENTS
+- Expo Router 6 for navigation (app/ directory, route groups)
+- Supabase JS client (@supabase/supabase-js) for auth, database, storage
+- TanStack React Query for data fetching and caching
+- Zod for form/schema validation
+- AsyncStorage for local persistence, expo-secure-store for auth tokens
+- Do NOT use Next.js, Expo Go legacy Router, or a monorepo setup — single standalone Expo app
+
+FOLDER STRUCTURE
+app/
+  (auth)/login.tsx
+  (auth)/register.tsx
+  (auth)/_layout.tsx
+  (tabs)/index.tsx        -> Dashboard: ranked internship matches
+  (tabs)/saved.tsx        -> Saved/applied internships
+  (tabs)/analytics.tsx    -> Profile match %, skill breakdown, counts
+  (tabs)/profile.tsx      -> Student profile view/edit
+  (tabs)/_layout.tsx
+  onboarding/index.tsx    -> Student profile creation form
+  internship/[id].tsx     -> Detail screen: match %, why recommended, skill gap
+  index.tsx               -> Auth redirect gate
+  _layout.tsx
+context/AuthContext.tsx
+context/RecommendationContext.tsx
+services/authService.ts
+services/recommendationService.ts
+services/feedbackService.ts
+lib/supabase.ts
+lib/queryClient.ts
+
+SUPABASE SCHEMA (create these tables, enable pgvector extension)
+
+create table students (
+  id uuid primary key references auth.users(id),
+  name text, education text, year int, career_goal text,
+  location text, work_mode text, stipend_preference int,
+  interests text[], skills jsonb
+);
+
+create table internships (
+  id uuid primary key default gen_random_uuid(),
+  title text, company text, description text, domain text,
+  location text, work_mode text, duration text, stipend int,
+  education text, required_skills text[], preferred_skills text[],
+  experience_level text, embedding vector(384)
+);
+
+create table interactions (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid references students(id),
+  internship_id uuid references internships(id),
+  action text check (action in ('view','save','skip','apply','like')),
+  created_at timestamptz default now()
+);
+
+create table recommendations (
+  student_id uuid references students(id),
+  internship_id uuid references internships(id),
+  score numeric,
+  reasons jsonb,
+  skill_gap jsonb,
+  primary key (student_id, internship_id)
+);
+
+SCREEN REQUIREMENTS
+
+1. Auth (login/register): Supabase email/password auth, session persisted via AsyncStorage, redirect to onboarding if no student profile exists, otherwise redirect to dashboard.
+
+2. Onboarding: Multi-step form capturing name, degree, year, skills (multi-select/tag input), interests, preferred domain, location, work mode (remote/on-site/hybrid), preferred stipend, career goal. On submit, upsert into `students` table.
+
+3. Dashboard (tabs/index.tsx): Fetch rows from `recommendations` joined with `internships` for the logged-in student, ordered by score descending. Render as cards showing: title, company, match % (large badge), domain, location, work mode. Tapping a card navigates to internship/[id].
+
+4. Internship Detail: Show full internship info, match % breakdown, a "Why recommended?" section rendering the `reasons` JSON as a checklist (✓ items), and a "Skill Gap" section rendering `skill_gap` JSON split into Strong / Partial / Missing categories with a short recommended-prep list. Include Save and Apply buttons that insert into `interactions` with action 'save' or 'apply'.
+
+5. Saved tab: List internships where the student has a 'save' interaction, pulling live data, allowing un-save.
+
+6. Feedback: After viewing a recommendation, show a lightweight thumbs up/down prompt ("Was this useful?") and on skip, a reason picker (Not interested / Skills don't match / Location / Already applied). Store as an interaction with action 'like' or 'skip' plus a reason field if you extend the schema.
+
+7. Analytics tab: Show profile match % average, strongest skills (from student skills matched most often), skills to improve (most frequent 'missing' skills across recommendations), and counts of applications/saves/recommendations — using simple card/stat components, no complex charting libraries required.
+
+8. Profile tab: View and edit the student's onboarding data.
+
+DESIGN
+- Clean, modern student-facing UI. Use a card-based layout for internship listings.
+- Match percentage should be visually prominent (colored badge or circular progress).
+- Skill gap section should use color coding: green for strong match, yellow for partial, red/gray for missing.
+- Support loading, empty, and error states on every data-fetching screen.
+
+DATA NOTES
+- The `recommendations` table is populated by a separate backend/AI service — the app only reads from it, never computes embeddings or scores client-side.
+- Seed the `internships` table with ~20 realistic sample records so the app is demoable without a live backend.
+- For demo purposes, seed a few rows in `recommendations` for a test student so the dashboard is not empty on first run.
+
+ENV
+- Read Supabase URL and anon key from EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY environment variables.
+
+Set up the project so it can be pushed directly to a GitHub repo, with a working package.json, app.json for Expo, and a README describing how to run it with `npx expo start`.

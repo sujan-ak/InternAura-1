@@ -1,0 +1,342 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: students
+    description: Student operations
+  - name: internships
+    description: Internship operations
+  - name: recommendations
+    description: Recommendation operations
+  - name: interactions
+    description: Interaction operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /students:
+    post:
+      operationId: createOrUpdateStudent
+      tags: [students]
+      summary: Create or update student profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStudentInput"
+      responses:
+        "200":
+          description: Student profile created or updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Student"
+  /students/me:
+    get:
+      operationId: getCurrentStudent
+      tags: [students]
+      summary: Fetch current student profile
+      responses:
+        "200":
+          description: Current student profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Student"
+        "404":
+          description: Profile not found
+  /internships:
+    get:
+      operationId: listInternships
+      tags: [internships]
+      summary: List all internships
+      responses:
+        "200":
+          description: List of internships
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Internship"
+  /recommendations:
+    get:
+      operationId: getRecommendations
+      tags: [recommendations]
+      summary: Ranked recommendations joined with internship data
+      parameters:
+        - name: student_id
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of recommendations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Recommendation"
+  /interactions:
+    post:
+      operationId: createInteraction
+      tags: [interactions]
+      summary: Log an interaction action
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInteractionInput"
+      responses:
+        "200":
+          description: Interaction logged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Interaction"
+    get:
+      operationId: listInteractions
+      tags: [interactions]
+      summary: List interactions
+      parameters:
+        - name: student_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of interactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Interaction"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    Student:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        degree:
+          type: string
+        year:
+          type: string
+        careerGoal:
+          type: string
+        location:
+          type: string
+        workMode:
+          type: string
+        stipendPreference:
+          type: string
+        interests:
+          type: array
+          items:
+            type: string
+        skills:
+          type: array
+          items:
+            type: string
+      required:
+        - id
+        - name
+        - degree
+        - year
+        - careerGoal
+        - location
+        - workMode
+        - stipendPreference
+        - interests
+        - skills
+
+    CreateStudentInput:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        degree:
+          type: string
+        year:
+          type: string
+        careerGoal:
+          type: string
+        location:
+          type: string
+        workMode:
+          type: string
+        stipendPreference:
+          type: string
+        interests:
+          type: array
+          items:
+            type: string
+        skills:
+          type: array
+          items:
+            type: string
+      required:
+        - name
+        - degree
+        - year
+        - careerGoal
+        - location
+        - workMode
+        - stipendPreference
+
+    Internship:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        company:
+          type: string
+        description:
+          type: string
+        domain:
+          type: string
+        location:
+          type: string
+        workMode:
+          type: string
+        duration:
+          type: string
+        stipend:
+          type: string
+        education:
+          type: string
+        requiredSkills:
+          type: array
+          items:
+            type: string
+        preferredSkills:
+          type: array
+          items:
+            type: string
+        experienceLevel:
+          type: string
+      required:
+        - id
+        - title
+        - company
+        - description
+        - domain
+        - location
+        - workMode
+        - duration
+        - stipend
+        - requiredSkills
+        - preferredSkills
+        - experienceLevel
+
+    Recommendation:
+      type: object
+      properties:
+        studentId:
+          type: string
+        internshipId:
+          type: string
+        score:
+          type: number
+        reasons:
+          type: array
+          items:
+            type: string
+        skillGap:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+        internship:
+          $ref: "#/components/schemas/Internship"
+      required:
+        - studentId
+        - internshipId
+        - score
+        - reasons
+        - skillGap
+        - internship
+
+    Interaction:
+      type: object
+      properties:
+        id:
+          type: string
+        studentId:
+          type: string
+        internshipId:
+          type: string
+        action:
+          type: string
+          enum: [view, save, skip, apply, like]
+        reason:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - studentId
+        - internshipId
+        - action
+        - createdAt
+
+    CreateInteractionInput:
+      type: object
+      properties:
+        studentId:
+          type: string
+        internshipId:
+          type: string
+        action:
+          type: string
+          enum: [view, save, skip, apply, like]
+        reason:
+          type: string
+      required:
+        - internshipId
+        - action

@@ -1,0 +1,43 @@
+SKILL-BASED FILTERING — InternAura
+
+1. SKILL FILTER UI
+- Add a "Filter by Skills" section to the Dashboard filter sheet (alongside domain, 
+  work mode, etc. from the general filter bar).
+- Show the student's own skills (from `students.skills`) as pre-selectable chips, 
+  defaulted to ALL selected (i.e. unfiltered = show all their skills as active).
+- Allow the student to deselect/select individual skills to narrow results — e.g. if 
+  their profile has [Python, React, SQL, Machine Learning], they can toggle off 
+  "React" to see only internships matching Python/SQL/ML.
+- Also allow adding a skill not in their profile via a search/autocomplete input 
+  (for exploring "what if I had skill X" scenarios), sourced from distinct skills 
+  across `internships.required_skills` + `internships.preferred_skills`.
+
+2. FILTER LOGIC
+- When skills are selected, filter internships client-side to those whose 
+  `required_skills` or `preferred_skills` array intersects with the selected skill set.
+- Support two match modes, exposed as a toggle:
+  - "Match ANY selected skill" (OR logic — broader results)
+  - "Match ALL selected skills" (AND logic — stricter, only internships requiring 
+    every selected skill)
+  Default to ANY.
+- Combine with existing filters (domain, work mode, location, stipend, match%) using 
+  AND logic across filter categories.
+
+3. VISUAL FEEDBACK ON CARDS
+- On each internship card in the filtered list, highlight which of the selected 
+  skills it matches (small tag row under the title, e.g. "Matches: Python, SQL").
+- If a card matches skills the student doesn't have (from preferred_skills), show 
+  those separately in a muted/gray tag style to hint at the skill gap.
+
+4. SKILL FILTER + SKILL GAP CONSISTENCY
+- The skill filter chips and the Skill Gap section on the detail screen (Strong/
+  Partial/Missing) must read from the same source of truth (`students.skills` vs 
+  `internships.required_skills`/`preferred_skills`) so the numbers/labels stay 
+  consistent across screens — do not compute skill matching two different ways.
+
+5. UI PLACEMENT
+- Nest this inside the same filter sheet as the general filters (from the previous 
+  filtering prompt), as a dedicated "Skills" tab/section within that sheet — not a 
+  separate screen.
+- Show active skill filter count in the main filter badge alongside other active 
+  filters (e.g. "Filters (2 skills, Remote)").

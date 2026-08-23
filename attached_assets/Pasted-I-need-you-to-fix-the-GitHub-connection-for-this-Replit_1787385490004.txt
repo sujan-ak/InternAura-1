@@ -1,0 +1,53 @@
+I need you to fix the GitHub connection for this Replit project and push the ENTIRE existing project to my new empty GitHub repository.
+
+Repository:
+sujan-ak/InternAura
+
+Important:
+
+* The GitHub repository is brand new and currently empty.
+* The complete project already exists inside this Replit workspace.
+* Do NOT recreate the project.
+* Do NOT delete or modify application code.
+* Do NOT reset or destroy the existing Git history.
+* Do NOT run destructive commands such as git reset --hard, git clean -fd, or rm.
+* Preserve all existing project files.
+
+First, inspect the current Git state:
+
+1. Run:
+   git status
+   git remote -v
+   git branch -vv
+   git log --oneline -10
+
+2. Verify which remote repository is configured.
+
+3. If the current remote already points to sujan-ak/InternAura, keep it.
+
+4. If it points to a different repository, change the origin remote to the new sujan-ak/InternAura repository.
+
+5. Check whether the existing project files are already committed locally.
+
+6. Check .gitignore before pushing. Make sure sensitive files such as .env files, API keys, credentials, secrets, node_modules, build folders, and Replit-specific secrets are not pushed.
+
+7. IMPORTANT: Inspect the repository history for accidentally committed API keys or secrets before pushing. If you find a real secret in the existing Git history, STOP and report exactly what you found instead of pushing it publicly.
+
+8. If there are legitimate uncommitted project files, stage them:
+   git add .
+
+9. Create an appropriate commit for any required changes.
+
+10. Make sure the branch is main.
+
+11. Push the complete existing project to the new GitHub repository:
+    git push -u origin main
+
+12. After pushing, verify:
+    git status
+    git remote -v
+    git log --oneline -5
+
+13. Confirm that the push succeeded.
+
+Do not change the application's functionality, dependencies, UI, database, or project structure. This task is ONLY about safely connecting the existing Replit project to the new GitHub repository and pushing the complete project.
